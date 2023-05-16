@@ -1,0 +1,131 @@
+---
+title: "Practical Machine Learning - Prediction Assignment"
+author: "FP"
+date: "2023-05-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+# knitr::opts_chunk$set(fig.height=2.75) 
+# knitr::opts_chunk$set(options(width=80))
+# knitr::opts_chunk$set(tidy.opts=list(width.cutoff=60), tidy=TRUE)
+```
+
+This is the final assignment project for the Johns Hopkins University Data Science Specialization’s course on Practical Machine Leaning. The project involves reading in training and test data sets, and creating a machine learning model for prediction. This document outlines the steps taken to produce the model and to make predictions for each 20 cases that list on testing data based on training data.
+
+## Background  
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, our goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset).   
+
+## Data Sources  
+The training data for this project is available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)  
+The test data is available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)  
+The data for this project comes from this original source: [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har).
+
+## Intended Results  
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+## Data Preprocessing
+
+Load relevant library for analysis
+```{r warning=FALSE, error=FALSE, }
+library(rattle)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+library(randomForest)
+library(RColorBrewer)
+```  
+
+Load initial seed in order to help reproducibility of the analysis result
+```{r warning=FALSE, error=FALSE}
+set.seed(1234) # for reproducibility purpose
+```  
+
+Load the train and test data set (assume user already downloaded file to their local disk). 
+```{r}
+# Import Data
+training <- read.csv("./data/pml-training.csv", na.strings=c('#DIV/0!', '', 'NA'), stringsAsFactors = F)
+testing  <- read.csv("./data/pml-testing.csv",  na.strings=c('#DIV/0!', '', 'NA'), stringsAsFactors = F)
+```
+In the step above , we also do some data cleaning bt treat specific value as NA in R.
+
+Check for data frame dimension
+```{r}
+dim(training)
+dim(testing)
+```
+## Data Cleaning
+
+A. Remove variable with low explanatory for the outcome variables (NZV variables)
+```{r warning=FALSE, error=FALSE}
+NZV <- nearZeroVar(training, saveMetrics = TRUE)
+training01 <- training[, !NZV$nzv]
+testing01 <- testing[, !NZV$nzv]
+``` 
+
+Check the dimension
+```{r}
+dim(training01)
+dim(testing01)
+```
+
+B. Remove variable that could be removed that will not interfere with the prediction result
+```{r}
+regex <- grepl("^X|timestamp|user_name", names(training01))
+training <- training01[, !regex]
+testing <- testing01[, !regex]
+```
+
+C. Remove columns that contains NA's
+```{r}
+cond <- (colSums(is.na(training)) == 0)
+training <- training[, cond]
+testing <- testing[, cond]
+```
+
+Correlation Matrix of Columns in the Training Data set.
+```{r}
+corMatrix <- cor(training[, -54])
+corrplot(corMatrix, order = "FPC", outline = T, addgrid.col = "darkgray", method = "color", type = "upper", cl.pos = "r", cl.cex = 0.5, tl.cex = 0.4, tl.col = rgb(0, 0, 0))
+```
+
+To make an evem more compact analysis, a PCA (Principal Components Analysis) could be performed as pre-processing step to the datasets. Nevertheless, as the correlations are quite few, this step will not be applied for this assignment.
+
+## Prediction Model Building
+
+Partition training data to train data and validation data set (80:20)
+```{r}
+inTrain <- createDataPartition(training$classe, p = 0.80, list = FALSE)
+validation <- training[-inTrain, ]
+training <- training[inTrain, ]
+```
+
+
+## Model 1: Decision Tree
+```{r}
+modelTree <- rpart(classe ~ ., data = training, method = "class")
+prp(modelTree)
+predictTree <- predict(modelTree, validation, type = "class")
+confusionMatrix(as.factor(validation$classe), predictTree)
+accuracy <- postResample(predictTree, as.factor(validation$classe))
+```
+
+
+## Model 2: Random Forest (3-fold cross validation)
+```{r}
+modelRF <- train(classe ~ ., data = training, method = "rf", trControl = trainControl(method = "cv", 3), ntree = 150)
+predictRF <- predict(modelRF, validation)
+confusionMatrix(as.factor(validation$classe), predictRF)
+```
+
+
+
+
+## Conclusions
+Based on the analysis in all these tests, it was possible to fit the model to obtain a high degree of precision in the sample observations. Since there is a lot of noise in the data, there should be a preprocessing stgeps to make sure data that being used as training data is reliable and able to predict the test data. All those variables that are very close to zero or that do not contribute quality of information to the results should be eliminated.
+
+Given the algorithm that selected to do the prediction, The Estimated Accuracy for the model 1 (Decision Tree) is about 70% while the model 2 (Random Forest) is about 99%. Therefore to answer the simulation case on test data set, we use the Model 2 or the Random Forest Model to predict the classe/ outcome as it has higher accuracy.
+
